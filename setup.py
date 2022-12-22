@@ -8,6 +8,7 @@ setup(
   description = 'Reverse Product Quantization (RPQ) of weights to reduce static memory usage.',
   author = 'Ali Kore',
   author_email = 'akore654@gmail.com',
+  long_description=open('README.md', 'r').read(),
   long_description_content_type = 'text/markdown',
   url = 'https://github.com/a-kore/RPQ-pytorch',
   keywords = [
