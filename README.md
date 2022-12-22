@@ -38,7 +38,7 @@ pip install rpq-pytorch
 
 ### Layers
 
-A set of common layers are re-implemented with quantized weights.  It follows the same usage as `torch.nn` modules with an extra argument for the `num_codebooks` for each layer.
+A set of common layers are re-implemented with quantized weights.  It follows the same usage as `torch.nn` modules with an extra argument for the `num_codebooks` for each layer.  For each layer, the `out_features`/`num_embeddings` must be divisuble by the `num_codebooks`.
 
 ```python
 from rpq.nn import RPQLinear
