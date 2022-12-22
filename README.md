@@ -38,7 +38,7 @@ pip install rpq-pytorch
 
 ### Layers
 
-A set of common layers are re-implemented with quantized weights.  It follows the same usage as `torch.nn` modules with an extra argument for the `num_codebooks` for each layer.  For each layer, the `out_features`/`num_embeddings` must be divisuble by the `num_codebooks`.
+A set of common layers are re-implemented with quantized weights.  It follows the same usage as `torch.nn` modules with an extra argument for the `num_codebooks` for each layer.  For each layer, the `out_features`/`num_embeddings` must be divisible by the `num_codebooks`.
 
 ```python
 from rpq.nn import RPQLinear
@@ -136,17 +136,17 @@ model_size(rpq_model)
 ```
 model size: 5885.707MB 
 ```
-This is an RPQOPT-66b initialized at float32 precision, a static weight version (standard OPT-66b) would come in at **264 GB**. This amount to approximately ~44x reduction in size.
+This is an RPQOPT-66b initialized at float32 precision, a static weight version (standard OPT-66b) would be **264 GB** in size. This amount to approximately ~44x reduction in size.
 
 
 ## Benchmarks
 
 Due to the entanglement of the weight matrix arising as result of the inheritance from a shared set of codebooks, testing the RPQ model variants against the original methods would be important to characterize issues/tradeoffs with training stability, especially at scale.  Those tests will be displayed in the table below:
 
-| Model | Config | Model Size | Validation Accuracy | Epochs |
+| Model | Config | Model Size | Dataset | Validation Accuracy | Epochs |
 | --- | --- | --- | --- | --- |
-| ViT | vit_base_patch16_224 | 330MB | TBD | 90 |
-| RPQViT | vit_base_patch16_224 | 88MB | TBD | 90 |
+| ViT | vit_base_patch16_224 | 330MB | Imagenet | TBD | 90 |
+| RPQViT | vit_base_patch16_224 | 88MB | Imagenet | TBD | 90 |
 
 ## TODO
 
