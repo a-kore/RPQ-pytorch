@@ -144,8 +144,13 @@ Due to the entanglement of the weight matrix arising as result of the inheritanc
 
 | Model | Config | Model Size | Dataset | Validation Accuracy | Epochs |
 | --- | --- | --- | --- | --- | -- |
+| ViT | vit_base_patch16_224 | 330MB | MNIST | TBD | 90 |
+| RPQViT | vit_base_patch16_224 | 88MB | MINST | TBD | 90 |
+| ViT | vit_base_patch16_224 | 330MB | CIFAR10 | TBD | 90 |
+| RPQViT | vit_base_patch16_224 | 88MB | CIFAR10 | TBD | 90 |
 | ViT | vit_base_patch16_224 | 330MB | Imagenet | TBD | 90 |
 | RPQViT | vit_base_patch16_224 | 88MB | Imagenet | TBD | 90 |
+
 
 ## TODO
 
