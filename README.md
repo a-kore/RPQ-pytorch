@@ -1,8 +1,7 @@
 # RPQ-pytorch
 Reverse Product Quantization (RPQ) of weights to reduce static memory usage.
 
-
-<img src="./assets/rpq_diagram.gif" width="1280px"></img>
+![](https://github.com/a-kore/RPQ-pytorch/raw/main/assets/rpq_diagram.gif)
 
 <!-- Go into how the method works. -->
 
