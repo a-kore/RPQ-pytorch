@@ -24,6 +24,8 @@ setup(
   install_requires=[
     'torch>=1.6',
     'einops>=0.6',
+    'transformers>=4.0',
+    'vit-pytorch>=0.40',
   ],
   classifiers=[
     'Development Status :: 4 - Beta',
