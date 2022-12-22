@@ -158,6 +158,7 @@ Due to the entanglement of the weight matrix arising as result of the inheritanc
 - [ ] Implement `RPQConvTranspose3d` layer
 - [ ] Implement `RPQBilinear` layer
 - [ ] Perform More benchmarks with LLMs (BERT, OPT, etc.,)
+- [ ] Explore methods of conversion from pre-trained static weights to dynamic RPQ weights
 
 
 
