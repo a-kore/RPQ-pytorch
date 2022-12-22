@@ -144,7 +144,7 @@ This is an RPQOPT-66b initialized at float32 precision, a static weight version 
 Due to the entanglement of the weight matrix arising as result of the inheritance from a shared set of codebooks, testing the RPQ model variants against the original methods would be important to characterize issues/tradeoffs with training stability, especially at scale.  Those tests will be displayed in the table below:
 
 | Model | Config | Model Size | Dataset | Validation Accuracy | Epochs |
-| --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | -- |
 | ViT | vit_base_patch16_224 | 330MB | Imagenet | TBD | 90 |
 | RPQViT | vit_base_patch16_224 | 88MB | Imagenet | TBD | 90 |
 
