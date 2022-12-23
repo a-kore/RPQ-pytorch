@@ -16,6 +16,7 @@ from vit_pytorch import ViT
 from rpq.models.rpqvit import RPQViT
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
+import numpy as np
 
 parser = argparse.ArgumentParser(description='PyTorch Imagenet Training')
 parser.add_argument('--opt', default='adamw', type=str, help='optimizer')
@@ -27,9 +28,7 @@ parser.add_argument('--data-dir', default='data', type=str, help='data directory
 parser.add_argument('--save-dir', default='checkpoints', type=str, help='save directory')
 parser.add_argument('--model', default='vit', type=str, help='model to train')
 parser.add_argument('--dataset', default='imagenet', type=str, help='dataset to train on')
-parser.add_argument('--no-pretrained', action='store_true', help='disable pretrained weights')
-parser.add_argument('--no-resume', action='store_true', help='disable resume training')
-parser.add_argument('--no-save', action='store_true', help='disable saving checkpoints')
+parser.add_argument('--resume', default=0, type=int, help='resume training')
 args = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -91,11 +90,11 @@ elif args.dataset == 'cifar10':
     )
 
     train_loader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=6, pin_memory=True
+        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True
     )
 
     test_loader = DataLoader(
-        test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=6, pin_memory=True
+        test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True
     )
 
 elif args.dataset == 'cifar100':
@@ -114,36 +113,34 @@ elif args.dataset == 'cifar100':
     )
 
     train_loader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=6, pin_memory=True
+        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True
     )
 
     test_loader = DataLoader(
-        test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=6, pin_memory=True
+        test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True
     )
 
 elif args.dataset == 'mnist':
     train_dataset = torchvision.datasets.MNIST(
         root=args.data_dir, train=True, download=True,
         transform= transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
+            transforms.Resize(224),
             transforms.Grayscale(num_output_channels=3),
-            transforms.ToTensor()]),
+            transforms.ToTensor()])
     )
     test_dataset = torchvision.datasets.MNIST(
         root=args.data_dir, train=False, download=True, transform=transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
+            transforms.Resize(224),
             transforms.Grayscale(num_output_channels=3),
-            transforms.ToTensor()]),
+            transforms.ToTensor()])
     )
 
     train_loader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=6, pin_memory=True
+        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True
     )
 
     test_loader = DataLoader(
-        test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=6, pin_memory=True
+        test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True
     )
 
 
@@ -188,10 +185,10 @@ elif args.opt == 'adamw':
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 
 # Resume training
-if not args.no_resume:
-    if os.path.isfile('checkpoint.pth'):
+if args.resume == 1:
+    if os.path.isfile('./checkpoint/ckpt.pth'):
         print('==> Resuming from checkpoint..')
-        checkpoint = torch.load('checkpoint.pth')
+        checkpoint = torch.load('./checkpoint/ckpt.pth')
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         start_epoch = checkpoint['epoch']
@@ -207,6 +204,8 @@ def train(epoch):
     print('Epoch: %d' % epoch)
     model.train()
     train_loss = 0
+    train_losses = []
+    accs = []
     correct = 0
     total = 0
     with tqdm(total=len(train_loader), unit='batch') as t:
@@ -218,15 +217,17 @@ def train(epoch):
             loss.backward()
             optimizer.step()
 
-            train_loss += loss.item()
+            train_loss = loss.item()
             _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
+            total = targets.size(0)
+            correct = predicted.eq(targets).sum().item()
+            accs.append(correct/total)
+            train_losses.append(train_loss)
 
-            t.set_postfix(loss=(train_loss / (batch_idx + 1)), acc=(100. * correct / total))
+            t.set_postfix(loss=np.mean(train_losses), acc=np.mean(accs))
             t.update()
 
-    return train_loss / len(train_loader), 100. * correct / total
+    return np.mean(train_losses), np.mean(accs)
 
 # Testing
 def test(epoch):
@@ -234,6 +235,8 @@ def test(epoch):
     global best_acc
     model.eval()
     test_loss = 0
+    test_losses = []
+    accs = []
     correct = 0
     total = 0
     with tqdm(total=len(test_loader), unit='batch') as t:
@@ -243,16 +246,17 @@ def test(epoch):
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
 
-                test_loss += loss.item()
+                test_loss = loss.item()
+                test_losses.append(test_loss)
                 _, predicted = outputs.max(1)
-                total += targets.size(0)
-                correct += predicted.eq(targets).sum().item()
-
-                t.set_postfix(loss=(test_loss / (batch_idx + 1)), acc=(100. * correct / total))
+                total = targets.size(0)
+                correct = predicted.eq(targets).sum().item()
+                accs.append(correct/total)
+                t.set_postfix(loss=np.mean(test_losses), acc=np.mean(accs))
                 t.update()
 
     # Save checkpoint.
-    acc = 100.*correct/total
+    acc = np.mean(accs)
     if acc > best_acc:
         print('Saving..')
         state = {
@@ -265,7 +269,7 @@ def test(epoch):
         torch.save(state, './checkpoint/ckpt.pth')
         best_acc = acc
 
-    return test_loss / len(test_loader), 100. * correct / total
+    return np.mean(test_losses),  acc
 
 best_acc = 0
 writer = SummaryWriter(log_dir="logs")
@@ -273,5 +277,9 @@ writer = SummaryWriter(log_dir="logs")
 for epoch in range(start_epoch, start_epoch+args.epochs):
     train_loss, train_acc = train(epoch)
     test_loss, test_acc = test(epoch)
-    writer.add_scalars('Loss', {'train': train_loss, 'test': test_loss}, epoch)
-    writer.add_scalars('Accuracy', {'train': train_acc, 'test': test_acc}, epoch)
+    writer.add_scalars(args.model, {'train_loss': train_loss}, epoch)
+    writer.add_scalars(args.model, {'train_acc': train_acc}, epoch)
+    writer.add_scalars(args.model, {'test_loss': test_loss}, epoch)
+    writer.add_scalars(args.model, {'test_acc': test_acc}, epoch)
+    
+writer.close()

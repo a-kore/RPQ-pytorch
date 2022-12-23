@@ -18,7 +18,7 @@ Reverse Product Quantization (RPQ) of weights to reduce static memory usage.
 
 If we reverse this process, we can dynamically spawn a larger set of vectors from a much smaller set of codebooks containing sub-vectors and a set of randomized uint8 indices, rather than having to persistently hold a much larger set of vectors.  This can be used during the forward pass to expand/compile the weight just-in-time in order to perform the operations on the input.  
 
-This creates a state for a model where the weights are "dormant" and expanded to their active state just before use.  This plays very well with methods like **gradient checkpointing** (and inference, similarly) where we can unpack the weights again rather then storing them.
+This creates a state for a model where the weights are "dormant" and expanded to their active state just before use.  This plays very well with methods like **gradient checkpointing** (and inference, similarly) where we can unpack the weights again rather then storing them.  In other words, the weights are part of the dynamic computational graph and can be forgotten/unpacked whenever they are needed.
 
 However, this doesn't come for free, the indices inherit from a set of shared codebooks, so the larger the weights, the more likelihood that vectors generated will share sub-vectors.  This can be prevented by increasing the number of codebooks, but requires more testing to see what the minimum number of codebooks required for each implementation should be.
 
@@ -35,7 +35,21 @@ pip install rpq-pytorch
 
 ## Usage
 
-### Layers
+#### Standalone Weights
+
+A standalone module `RPQWeight` is available as an `nn.Module` wrapper that intializes a set of dynamic PQ weight and returns the expanded set of weight vectors.
+
+```python
+from rpq.nn import RPQWeight
+
+w = RPQWeight(num_codebooks=72, codebook_dim=128, num_vectors=9216) 
+
+print(w.codebooks.shape, w.indices.shape) # torch.Size([72, 256, 128]) torch.Size([72, 9216])
+
+print(w().shape) # torch.Size([72, 9216, 128])
+```
+
+#### Layers
 
 A set of common layers are re-implemented with quantized weights.  It follows the same usage as `torch.nn` modules with an extra argument for the `num_codebooks` for each layer.  For each layer, the `out_features`/`num_embeddings` must be divisible by the `num_codebooks`.
 
@@ -64,11 +78,11 @@ Layers implemented:
 
 *Note: `Embedding` layers are a lookup table and therefore very fast, as such the operation to expand the weights for `RPQEmbedding` adds a lot of time to the operation especially for a small number of tokens (10s of $\mu s$ -> 10s of ms).
 
-### Models
+#### Models
 
 Using the layer implementations, we can implement models via drop-in replacement of their static weight counterparts.
 
-#### RPQViT (ViT Giant)
+##### RPQViT (ViT Giant)
 
 ```python
 from vit_pytorch import ViT
@@ -110,7 +124,7 @@ model size: 361.429MB
 ```
 Approximately ~6x reduction in model size.
 
-#### RPQOPT (opt-66b)
+##### RPQOPT (opt-66b)
 
 ```python
 
@@ -144,8 +158,8 @@ Due to the entanglement of the weight matrix arising as result of the inheritanc
 
 | Model | Config | Model Size | Dataset | Validation Accuracy | Epochs |
 | --- | --- | --- | --- | --- | -- |
-| ViT | vit_base_patch16_224 | 330MB | MNIST | TBD | 90 |
-| RPQViT | vit_base_patch16_224 | 88MB | MINST | TBD | 90 |
+| ViT | vit_base_patch16_224 | 330MB | MNIST | TBD | 20 |
+| RPQViT | vit_base_patch16_224 | 88MB | MINST | TBD | 20 |
 | ViT | vit_base_patch16_224 | 330MB | CIFAR10 | TBD | 90 |
 | RPQViT | vit_base_patch16_224 | 88MB | CIFAR10 | TBD | 90 |
 | ViT | vit_base_patch16_224 | 330MB | Imagenet | TBD | 90 |

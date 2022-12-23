@@ -10,6 +10,46 @@ from torch.nn.modules.utils import _single, _pair
 import torch.nn.init as init 
 
 
+class RPQWeight(nn.Module):
+    """A standalone layer that initializes an RPQ weight matrix from a given shape."""
+    __constants__ = ['num_codebooks', 'codebook_dim', 'num_vectors']
+    num_codebooks: int
+    codebook_dim: int
+    num_vectors: int
+    codebooks: Tensor
+    
+    def __init__(self, num_codebooks: int, codebook_dim: int, num_vectors: int, 
+                 device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super().__init__()
+        self.num_codebooks = num_codebooks
+        self.codebook_dim = codebook_dim
+        self.num_vectors = num_vectors
+        
+        self.register_buffer("indices",
+                             torch.randint(high=256, size=(self.num_codebooks, self.num_vectors), 
+                                           dtype=torch.uint8, device=factory_kwargs['device']))
+        self.codebooks = Parameter(torch.empty(self.num_codebooks, 256, 
+                                               self.codebook_dim, **factory_kwargs))            
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        init.normal_(self.codebooks)
+
+    def expand(self, indices, codebooks):
+        dim = codebooks.shape[-1]
+        indices_expand = repeat(indices, 'h c -> h c d', d = dim)
+        return codebooks.gather(dim=1, index=indices_expand.long())
+
+    def forward(self) -> Tensor:
+        return self.expand(self.indices, self.codebooks)
+
+    def extra_repr(self) -> str:
+        s = 'num_codebooks={}, codebook_dim={}, num_vectors={}'.format(
+            self.num_codebooks, self.codebook_dim, self.num_vectors)
+        return s
+
+
 class RPQEmbedding(nn.Module):
     """A simple lookup table that stores embeddings of a fixed dictionary and size.
     
