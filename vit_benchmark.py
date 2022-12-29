@@ -278,9 +278,9 @@ writer = SummaryWriter(log_dir="logs")
 for epoch in range(start_epoch, start_epoch+args.epochs):
     train_loss, train_acc = train(epoch)
     test_loss, test_acc = test(epoch)
-    writer.add_scalars(args.model, {'train_loss': train_loss}, epoch)
-    writer.add_scalars(args.model, {'train_acc': train_acc}, epoch)
-    writer.add_scalars(args.model, {'test_loss': test_loss}, epoch)
-    writer.add_scalars(args.model, {'test_acc': test_acc}, epoch)
+    writer.add_scalars(args.model, {'Loss/train': train_loss}, epoch)
+    writer.add_scalars(args.model, {'Accuracy/train': train_acc}, epoch)
+    writer.add_scalars(args.model, {'Loss/test': test_loss}, epoch)
+    writer.add_scalars(args.model, {'Accuracy/test': test_acc}, epoch)
     
 writer.close()
