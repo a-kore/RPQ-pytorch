@@ -56,7 +56,7 @@ A set of common layers are re-implemented with quantized weights.  It follows th
 ```python
 from rpq.nn import RPQLinear
 
-layer = RPQLinear(in_features=1024, out_features=4096, num_codebooks=16)
+layer = RPQLinear(in_features=1024, out_features=1024, num_codebooks=16)
 
 x = torch.randn(1, 1, 1024) # (b, n, d)
 y = layer(x) # (1, 1, 4096)
@@ -155,13 +155,13 @@ This is an RPQOPT-66b initialized at float32 precision, a static weight version 
 ## Benchmarks
 
 Due to the entanglement of the weight matrix arising as result of the inheritance from a shared set of codebooks, testing the RPQ model variants against the original methods would be important to characterize issues/tradeoffs with training stability, especially at scale.  Those tests will be displayed in the table below:
-
+<!-- 93.6 93.4 43.0 57.2 -->
 | Model | Config | Model Size | Dataset | Validation Accuracy | Epochs |
 | --- | --- | --- | --- | --- | -- |
-| ViT | vit_base_patch16_224 | 330MB | MNIST | 93.6 | 10 |
-| RPQViT | vit_base_patch16_224 | 88MB | MINST | 96.4 | 10 |
-| ViT | vit_base_patch16_224 | 330MB | CIFAR10 | TBD | 90 |
-| RPQViT | vit_base_patch16_224 | 88MB | CIFAR10 | TBD | 90 |
+| ViT | vit_base_patch16_224 | 330MB | MNIST | TBD | 10 |
+| RPQViT | vit_base_patch16_224 | 88MB | MINST | TBD | 10 |
+| ViT | vit_base_patch16_224 | 330MB | CIFAR10 | TBD | 20 |
+| RPQViT | vit_base_patch16_224 | 88MB | CIFAR10 | TBD | 20 |
 | ViT | vit_base_patch16_224 | 330MB | Imagenet | TBD | 90 |
 | RPQViT | vit_base_patch16_224 | 88MB | Imagenet | TBD | 90 |
 

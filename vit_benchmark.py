@@ -27,6 +27,7 @@ parser.add_argument('--seed', default=42, type=int, help='random seed')
 parser.add_argument('--data-dir', default='data', type=str, help='data directory')
 parser.add_argument('--save-dir', default='checkpoints', type=str, help='save directory')
 parser.add_argument('--model', default='vit', type=str, help='model to train')
+parser.add_argument('--num_classes', default=10, type=int, help='number of classes' )
 parser.add_argument('--dataset', default='imagenet', type=str, help='dataset to train on')
 parser.add_argument('--resume', default=0, type=int, help='resume training')
 args = parser.parse_args()
@@ -150,7 +151,7 @@ if args.model == 'vit':
         model = ViT(
             image_size=224,
             patch_size=16,
-            num_classes=1000,
+            num_classes=args.num_classes,
             dim=768,
             depth=12,
             heads=12,
@@ -162,7 +163,7 @@ elif args.model == 'rpqvit':
     model = RPQViT(
         image_size=224,
         patch_size=16,
-        num_classes=1000,
+        num_classes=args.num_classes,
         dim=768,
         depth=12,
         heads=12,
