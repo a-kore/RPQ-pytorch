@@ -27,6 +27,7 @@ setup(
     'einops>=0.6',
     'transformers>=4.0',
     'vit-pytorch>=0.40',
+    'routing-transformer>=1.6',
   ],
   classifiers=[
     'Development Status :: 4 - Beta',

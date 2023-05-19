@@ -1,5 +1,5 @@
 """
-Implementation of ViT model with standard modules replaced with their RPQ counterparts.
+Implementation of ViT model with standard linear modules replaced with their RPQ counterparts.
 
 This is a modified version of the ViT model from the https://github.com/lucidrains/vit-pytorch repository.
 """
@@ -9,7 +9,6 @@ from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from torch.nn.modules.utils import _pair
 from rpq.nn import RPQLinear
-from functools import partial
 
 
 class PreNorm(nn.Module):
@@ -27,7 +26,7 @@ class FeedForward(nn.Module):
             RPQLinear(dim, hidden_dim, num_codebooks),
             nn.GELU(),
             nn.Dropout(dropout),
-            RPQLinear(hidden_dim, dim, num_codebooks),
+            RPQLinear(hidden_dim, dim, (hidden_dim//dim)*num_codebooks),
             nn.Dropout(dropout)
         )
     def forward(self, x):
@@ -45,7 +44,7 @@ class Attention(nn.Module):
         self.attend = nn.Softmax(dim = -1)
         self.dropout = nn.Dropout(dropout)
 
-        self.to_qkv = RPQLinear(dim, inner_dim * 3, heads * 3, bias = False)
+        self.to_qkv = RPQLinear(dim, inner_dim * 3, heads, bias = False)
 
         self.to_out = nn.Sequential(
             RPQLinear(inner_dim, dim, heads),
@@ -94,7 +93,7 @@ class RPQViT(nn.Module):
 
         self.to_patch_embedding = nn.Sequential(
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
-            RPQLinear(patch_dim, dim, num_codebooks = heads * (dim//patch_dim)),
+            nn.Linear(patch_dim, dim),
         )
 
         self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))

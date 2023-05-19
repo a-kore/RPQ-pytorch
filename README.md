@@ -1,7 +1,7 @@
 # RPQ-pytorch
 Reverse Product Quantization (RPQ) of weights to reduce static memory usage.
 
-![](https://github.com/a-kore/RPQ-pytorch/raw/main/assets/rpq_diagram.gif)
+![](assets/rpq_diagram.gif)
 
 <!-- Go into how the method works. -->
 
@@ -46,7 +46,7 @@ w = RPQWeight(num_codebooks=72, codebook_dim=128, num_vectors=9216)
 
 print(w.codebooks.shape, w.indices.shape) # torch.Size([72, 256, 128]) torch.Size([72, 9216])
 
-print(w().shape) # torch.Size([72, 9216, 128])
+print(w().shape) # torch.Size([9216, 9216])
 ```
 
 #### Layers
@@ -149,7 +149,7 @@ model_size(rpq_model)
 ```
 model size: 5885.707MB 
 ```
-This is an RPQOPT-66b initialized at float32 precision, a static weight version (standard OPT-66b) would be **264 GB** in size. This amount to approximately ~44x reduction in size.
+This is an RPQOPT-66b initialized at float32 precision, a static weight version (standard OPT-66b) would be **264 GB** in size. This amounts to approximately ~44x reduction in size.
 
 
 ## Benchmarks
@@ -158,10 +158,10 @@ Due to the entanglement of the weight matrix arising as result of the inheritanc
 <!-- 93.6 93.4 43.0 57.2 -->
 | Model | Config | Model Size | Dataset | Validation Accuracy | Epochs |
 | --- | --- | --- | --- | --- | -- |
-| ViT | vit_base_patch16_224 | 330MB | MNIST | TBD | 10 |
-| RPQViT | vit_base_patch16_224 | 88MB | MINST | TBD | 10 |
-| ViT | vit_base_patch16_224 | 330MB | CIFAR10 | TBD | 20 |
-| RPQViT | vit_base_patch16_224 | 88MB | CIFAR10 | TBD | 20 |
+| ViT | vit_base_patch16_224 | 330MB | MNIST | TBD | 90 |
+| RPQViT | vit_base_patch16_224 | 88MB | MINST | TBD | 90 |
+| ViT | vit_base_patch16_224 | 330MB | CIFAR10 | TBD | 90 |
+| RPQViT | vit_base_patch16_224 | 88MB | CIFAR10 | TBD | 90 |
 | ViT | vit_base_patch16_224 | 330MB | Imagenet | TBD | 90 |
 | RPQViT | vit_base_patch16_224 | 88MB | Imagenet | TBD | 90 |
 
@@ -175,7 +175,8 @@ Due to the entanglement of the weight matrix arising as result of the inheritanc
 - [ ] Implement `RPQConvTranspose2d` layer
 - [ ] Implement `RPQConvTranspose3d` layer
 - [ ] Implement `RPQBilinear` layer
-- [ ] Perform More benchmarks with LLMs (BERT, OPT, etc.,)
+- [ ] Perform benchmarks with ViTs (ViT vs RPQViT)
+- [ ] Perform benchmarks with LLMs (BERT, OPT, etc.,)
 - [ ] Explore methods of conversion from pre-trained static weights to dynamic RPQ weights
 
 

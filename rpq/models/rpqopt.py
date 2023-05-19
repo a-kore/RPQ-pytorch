@@ -290,8 +290,8 @@ class OPTDecoderLayer(nn.Module):
         self.self_attn_layer_norm = nn.LayerNorm(
             self.embed_dim, elementwise_affine=config.layer_norm_elementwise_affine
         )
-        self.fc1 = RPQLinear(self.embed_dim, config.ffn_dim, config.num_attention_heads*(config.ffn_dim//self.embed_dim), bias=config.enable_bias)
-        self.fc2 = RPQLinear(config.ffn_dim, self.embed_dim, config.num_attention_heads, bias=config.enable_bias)
+        self.fc1 = RPQLinear(self.embed_dim, config.ffn_dim, config.num_attention_heads, bias=config.enable_bias)
+        self.fc2 = RPQLinear(config.ffn_dim, self.embed_dim, config.num_attention_heads*(config.ffn_dim//self.embed_dim), bias=config.enable_bias)
         self.final_layer_norm = nn.LayerNorm(self.embed_dim, elementwise_affine=config.layer_norm_elementwise_affine)
 
     def forward(
@@ -405,6 +405,10 @@ class OPTPreTrainedModel(PreTrainedModel):
         std = self.config.init_std
         if isinstance(module, RPQLinear):
             module.codebooks.data.normal_(mean=0.0, std=std)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance (module, nn.Linear):
+            module.weight.data.normal_(mean=0.0, std=std)
             if module.bias is not None:
                 module.bias.data.zero_()
         elif isinstance(module, RPQEmbedding):
