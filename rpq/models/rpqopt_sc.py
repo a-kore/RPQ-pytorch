@@ -39,6 +39,8 @@ from transformers.utils import (
 from transformers.models.opt.configuration_opt import OPTConfig
 
 from rpq.nn import RPQLinear, RPQEmbedding
+from rpq.utils import calc_head_expansion
+import math
 
 
 logger = logging.get_logger(__name__)
@@ -96,16 +98,16 @@ def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] 
     return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
 
 
-class RPQOPTLearnedPositionalEmbedding(RPQEmbedding):
+class OPTLearnedPositionalEmbedding(nn.Embedding):
     """
     This module learns positional embeddings up to a fixed maximum size.
     """
 
-    def __init__(self, num_embeddings: int, embedding_dim: int, num_codebooks: int):
+    def __init__(self, num_embeddings: int, embedding_dim: int):
         # OPT is set up so that if padding_idx is specified then offset the embedding ids by 2
         # and adjust num_embeddings appropriately. Other models don't have this hack
         self.offset = 2
-        super().__init__(num_embeddings + self.offset, embedding_dim, num_codebooks)
+        super().__init__(num_embeddings + self.offset, embedding_dim)
 
     def forward(self, attention_mask: torch.LongTensor, past_key_values_length: int = 0):
         """`input_ids_shape` is expected to be [bsz x seqlen]."""
@@ -145,10 +147,10 @@ class OPTAttention(nn.Module):
         self.scaling = self.head_dim**-0.5
         self.is_decoder = is_decoder
 
-        self.k_proj = RPQLinear(embed_dim, embed_dim, num_heads, bias=bias)
-        self.v_proj = RPQLinear(embed_dim, embed_dim, num_heads, bias=bias)
-        self.q_proj = RPQLinear(embed_dim, embed_dim, num_heads, bias=bias)
-        self.out_proj = RPQLinear(embed_dim, embed_dim, num_heads, bias=bias)
+        self.k_proj = RPQLinear(embed_dim, embed_dim, num_heads, bias=bias, shared_codebooks=True)
+        self.v_proj = RPQLinear(embed_dim, embed_dim, num_heads, bias=bias, shared_codebooks=True)
+        self.q_proj = RPQLinear(embed_dim, embed_dim, num_heads, bias=bias, shared_codebooks=True)
+        self.out_proj = RPQLinear(embed_dim, embed_dim, num_heads, bias=bias, shared_codebooks=True)
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
@@ -273,7 +275,7 @@ class OPTAttention(nn.Module):
 
 
 class OPTDecoderLayer(nn.Module):
-    def __init__(self, config: OPTConfig):
+    def __init__(self, config: OPTConfig, rpq_codebooks: nn.ParameterList):
         super().__init__()
         self.embed_dim = config.hidden_size
         self.self_attn = OPTAttention(
@@ -283,6 +285,11 @@ class OPTDecoderLayer(nn.Module):
             is_decoder=True,
             bias=config.enable_bias,
         )
+        self.self_attn.q_proj.codebooks = rpq_codebooks[0]
+        self.self_attn.k_proj.codebooks = rpq_codebooks[1]
+        self.self_attn.v_proj.codebooks = rpq_codebooks[2]
+        self.self_attn.out_proj.codebooks = rpq_codebooks[3]
+
         self.do_layer_norm_before = config.do_layer_norm_before
         self.dropout = config.dropout
         self.activation_fn = ACT2FN[config.activation_function]
@@ -290,8 +297,14 @@ class OPTDecoderLayer(nn.Module):
         self.self_attn_layer_norm = nn.LayerNorm(
             self.embed_dim, elementwise_affine=config.layer_norm_elementwise_affine
         )
-        self.fc1 = RPQLinear(self.embed_dim, config.ffn_dim, config.num_attention_heads, bias=config.enable_bias)
-        self.fc2 = RPQLinear(config.ffn_dim, self.embed_dim, config.num_attention_heads*(config.ffn_dim//self.embed_dim), bias=config.enable_bias)
+        if config.expand_heads:
+            expansion = (config.ffn_dim//self.embed_dim)
+        else:
+            expansion = 1
+        self.fc1 = RPQLinear(self.embed_dim, config.ffn_dim, config.num_attention_heads*expansion, bias=config.enable_bias, shared_codebooks=True)
+        self.fc1.codebooks = rpq_codebooks[4]
+        self.fc2 = RPQLinear(config.ffn_dim, self.embed_dim, config.num_attention_heads*expansion, bias=config.enable_bias, shared_codebooks=True)
+        self.fc2.codebooks = rpq_codebooks[5]
         self.final_layer_norm = nn.LayerNorm(self.embed_dim, elementwise_affine=config.layer_norm_elementwise_affine)
 
     def forward(
@@ -340,7 +353,6 @@ class OPTDecoderLayer(nn.Module):
         if not self.do_layer_norm_before:
             hidden_states = self.self_attn_layer_norm(hidden_states)
 
-        # Fully Connected
         residual = hidden_states
 
         # 125m, 1.7B, ..., 175B applies layer norm BEFORE attention
@@ -405,14 +417,18 @@ class OPTPreTrainedModel(PreTrainedModel):
             module.codebooks.data.normal_(mean=0.0, std=std)
             if module.bias is not None:
                 module.bias.data.zero_()
-        elif isinstance (module, nn.Linear):
-            module.weight.data.normal_(mean=0.0, std=std)
-            if module.bias is not None:
-                module.bias.data.zero_()
         elif isinstance(module, RPQEmbedding):
             module.codebooks.data.normal_(mean=0.0, std=std)
             if module.padding_idx is not None:
                 module.get_weight().data[module.padding_idx].zero_()
+        elif isinstance (module, nn.Linear):
+            module.weight.data.normal_(mean=0.0, std=std)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0.0, std=std)
+            if module.padding_idx is not None:
+                module.weight.data[module.padding_idx].zero_()
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (RPQOPTDecoder)):
@@ -496,17 +512,21 @@ class RPQOPTDecoder(OPTPreTrainedModel):
         self.padding_idx = config.pad_token_id
         self.max_target_positions = config.max_position_embeddings
         self.vocab_size = config.vocab_size
-
-        self.embed_tokens = RPQEmbedding(config.vocab_size, config.word_embed_proj_dim, config.num_attention_heads, self.padding_idx)
-        self.embed_positions = RPQOPTLearnedPositionalEmbedding(config.max_position_embeddings, config.hidden_size, config.num_attention_heads)
+        
+        if config.expand_heads:
+            expansion = calc_head_expansion(config.vocab_size, config.word_embed_proj_dim, config.num_attention_heads)
+        else:
+            expansion = 1
+        self.embed_tokens = RPQEmbedding(config.vocab_size, config.word_embed_proj_dim, config.num_attention_heads*expansion, self.padding_idx)
+        self.embed_positions = OPTLearnedPositionalEmbedding(config.max_position_embeddings, config.hidden_size)
 
         if config.word_embed_proj_dim != config.hidden_size:
-            self.project_out = RPQLinear(config.hidden_size, config.word_embed_proj_dim, config.num_attention_heads*(config.word_embed_proj_dim//config.hidden_size), bias=False)
+            self.project_out = nn.Linear(config.hidden_size, config.word_embed_proj_dim, bias=False)
         else:
             self.project_out = None
 
         if config.word_embed_proj_dim != config.hidden_size:
-            self.project_in = RPQLinear(config.word_embed_proj_dim, config.hidden_size, config.num_attention_heads, bias=False)
+            self.project_in = nn.Linear(config.word_embed_proj_dim, config.hidden_size, bias=False)
         else:
             self.project_in = None
 
@@ -520,7 +540,25 @@ class RPQOPTDecoder(OPTPreTrainedModel):
         else:
             self.final_layer_norm = None
 
-        self.layers = nn.ModuleList([OPTDecoderLayer(config) for _ in range(config.num_hidden_layers)])
+        # init shared codebooks
+        if config.expand_heads:
+            expansion = (config.ffn_dim // config.hidden_size)
+        else:
+            expansion = 1 
+        self.rpq_codebooks = nn.ParameterList(
+            [torch.empty(config.num_attention_heads, 256, config.hidden_size // config.num_attention_heads),
+            torch.empty(config.num_attention_heads, 256, config.hidden_size // config.num_attention_heads),
+            torch.empty(config.num_attention_heads, 256, config.hidden_size // config.num_attention_heads),
+            torch.empty(config.num_attention_heads, 256, config.hidden_size // config.num_attention_heads),
+            torch.empty(config.num_attention_heads*expansion, 256, config.ffn_dim // config.num_attention_heads),
+            torch.empty(config.num_attention_heads*expansion, 256, config.ffn_dim // config.num_attention_heads)]
+        )
+        # init all codebooks using kaiming_uniform_
+        for codebook in self.rpq_codebooks:
+            nn.init.kaiming_uniform_(codebook, a=math.sqrt(5))
+
+
+        self.layers = nn.ModuleList([OPTDecoderLayer(config, self.rpq_codebooks) for _ in range(config.num_hidden_layers)])
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
@@ -742,8 +780,9 @@ class RPQOPTDecoder(OPTPreTrainedModel):
     OPT_START_DOCSTRING,
 )
 class RPQOPTModel(OPTPreTrainedModel):
-    def __init__(self, config: OPTConfig):
+    def __init__(self, config: OPTConfig, expand_heads=False):
         super().__init__(config)
+        config.expand_heads = expand_heads
         self.decoder = RPQOPTDecoder(config)
         # Initialize weights and apply final processing
         self.post_init()
@@ -817,7 +856,9 @@ class RPQOPTForCausalLM(OPTPreTrainedModel):
         self.model = RPQOPTModel(config)
 
         # the lm_head weight is automatically tied to the embed tokens weight
-        self.lm_head = nn.Linear(config.word_embed_proj_dim, config.vocab_size, bias=False)
+        self.lm_head = RPQLinear(config.word_embed_proj_dim, config.vocab_size, config.num_attention_heads, bias=False, shared_codebooks=True)
+        # self weight to the embeddings
+        self.lm_head.codebooks = self.model.decoder.embed_tokens.codebooks
 
         # Initialize weights and apply final processing
         self.post_init()

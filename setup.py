@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'RPQ-pytorch',
   packages = find_packages(exclude=[]),
-  version = '0.0.30',
+  version = '0.0.31',
   license='MIT',
   description = 'Reverse Product Quantization (RPQ) of weights to reduce static memory usage.',
   author = 'Ali Kore',
@@ -27,7 +27,6 @@ setup(
     'einops>=0.6',
     'transformers>=4.0',
     'vit-pytorch>=0.40',
-    'routing-transformer>=1.6',
   ],
   classifiers=[
     'Development Status :: 4 - Beta',
