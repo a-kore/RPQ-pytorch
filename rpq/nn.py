@@ -28,7 +28,7 @@ class RPQEmbedding(nn.Module):
     sparse: bool
     num_codebooks: int
     
-    def __init__(self, num_embeddings: int, embedding_dim: int, num_codebooks: int, 
+    def __init__(self, num_embeddings: int, embedding_dim: int, num_codebooks: int, use_subset=True,
                  padding_idx: Optional[int] = None, max_norm: Optional[float] = None, norm_type: float = 2., 
                  scale_grad_by_freq: bool = False, sparse: bool = False, 
                  device=None, dtype=None) -> None:
@@ -48,34 +48,27 @@ class RPQEmbedding(nn.Module):
         assert self.embedding_dim % num_codebooks == 0, 'embedding_dim should be divisible by num_codebooks'
         self.codebook_dim = self.embedding_dim//self.num_codebooks
         
+        self.use_subset = use_subset
         self.max_norm = max_norm
         self.norm_type = norm_type
         self.scale_grad_by_freq = scale_grad_by_freq
         self.sparse = sparse
-        
-        self.register_buffer("codes",
-                             torch.randint(high=256, size=(self.num_codebooks, self.num_embeddings), 
-                                           dtype=torch.uint8, device=factory_kwargs['device']))
-        self.codebooks = Parameter(torch.empty(self.num_codebooks, 256, 
-                                               self.codebook_dim, **factory_kwargs))            
+
+        self.rpqweight = RPQWeight(self.num_codebooks, self.codebook_dim, self.num_embeddings,
+                                   device=factory_kwargs['device'], dtype=factory_kwargs['dtype'])
+                                         
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        init.normal_(self.codebooks)
-
-    def expand(self, codes, codebooks):
-        dim = codebooks.shape[-1]
-        codes_expand = repeat(codes, 'h c -> h c d', d = dim)
-        return codebooks.gather(dim=1, index=codes_expand.long())
-        
-    def get_weight(self) -> Tensor:
-        return rearrange(self.expand(self.codes, self.codebooks), 
-                         'h c d -> c (h d )')
+        init.normal_(self.rpqweight.codebooks)
 
     def forward(self, input: Tensor) -> Tensor:
-        return F.embedding(
-            input, self.get_weight(), self.padding_idx, self.max_norm, 
-            self.norm_type, self.scale_grad_by_freq, sparse=self.sparse)
+        if self.use_subset:
+            return self.rpqweight(subset=input.flatten()).view(*input.shape, self.embedding_dim)
+        else:
+            return F.embedding(
+                input, self.rpqweight(), self.padding_idx, self.max_norm, 
+                self.norm_type, self.scale_grad_by_freq, sparse=self.sparse)
 
     def extra_repr(self) -> str:
         s = '{num_embeddings}, {embedding_dim}'
