@@ -28,8 +28,9 @@ class RPQEmbedding(nn.Module):
     sparse: bool
     num_codebooks: int
     
-    def __init__(self, num_embeddings: int, embedding_dim: int, num_codebooks: int, use_subset=True,
-                 padding_idx: Optional[int] = None, max_norm: Optional[float] = None, norm_type: float = 2., 
+    def __init__(self, num_embeddings: int, embedding_dim: int, num_codebooks: int, nbits: int = 8, 
+                 use_subset=True, padding_idx: Optional[int] = None, 
+                 max_norm: Optional[float] = None, norm_type: float = 2., 
                  scale_grad_by_freq: bool = False, sparse: bool = False, 
                  device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
@@ -47,14 +48,15 @@ class RPQEmbedding(nn.Module):
         self.num_codebooks = num_codebooks
         assert self.embedding_dim % num_codebooks == 0, 'embedding_dim should be divisible by num_codebooks'
         self.codebook_dim = self.embedding_dim//self.num_codebooks
-        
+
+        self.nbits = nbits
         self.use_subset = use_subset
         self.max_norm = max_norm
         self.norm_type = norm_type
         self.scale_grad_by_freq = scale_grad_by_freq
         self.sparse = sparse
 
-        self.rpqweight = RPQWeight(self.num_codebooks, self.codebook_dim, self.num_embeddings,
+        self.rpqweight = RPQWeight(self.num_codebooks, self.codebook_dim, self.num_embeddings, nbits=self.nbits,
                                    device=factory_kwargs['device'], dtype=factory_kwargs['dtype'])
                                          
         self.reset_parameters()
@@ -91,32 +93,41 @@ class RPQLinear(nn.Module):
     in_features: int
     out_features: int
     num_codebooks: int
+    nbits: int
     codebooks: Tensor
     
-    def __init__(self, in_features: int, out_features: int, num_codebooks: int, shared_codebooks=False, 
-                 split='column', bias:bool = True, device=None, dtype=None) -> None:
+    def __init__(self, in_features: int, out_features: int, num_codebooks: int, nbits: int = 8, 
+                 shared_codebooks=False, split='column', bias:bool = True, 
+                 device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.num_codebooks = num_codebooks
         self.split = split
+        self.nbits = nbits
         self.shared_codebooks = shared_codebooks
         
         if self.split == 'row':
             assert self.out_features % num_codebooks == 0, 'out_features should be divisible by num_codebooks'
             self.codebook_dim = self.out_features//self.num_codebooks
-            self.register_buffer("codes",
-                                torch.randint(high=256, size=(self.num_codebooks, self.in_features), 
-                                            dtype=torch.uint8, device=factory_kwargs['device']))
+            self.rpqweight = RPQWeight(self.num_codebooks, self.codebook_dim, self.in_features,
+                                        nbits=self.nbits, shared_codebooks=self.shared_codebooks,
+                                        device=factory_kwargs['device'], dtype=factory_kwargs['dtype'])
+            # self.register_buffer("codes",
+            #                     torch.randint(high=256, size=(self.num_codebooks, self.in_features), 
+            #                                 dtype=torch.uint8, device=factory_kwargs['device']))
         elif self.split == 'column':
             assert self.in_features % num_codebooks == 0, 'in_features should be divisible by num_codebooks'
             self.codebook_dim = self.in_features//self.num_codebooks
-            self.register_buffer("codes",
-                                torch.randint(high=256, size=(self.num_codebooks, self.out_features), 
-                                            dtype=torch.uint8, device=factory_kwargs['device']))
-        if not self.shared_codebooks:
-            self.codebooks = Parameter(torch.empty(self.num_codebooks, 256, self.codebook_dim, **factory_kwargs))
+            self.rpqweight = RPQWeight(self.num_codebooks, self.codebook_dim, self.out_features,
+                                        nbits=self.nbits, shared_codebooks=self.shared_codebooks, 
+                                        device=factory_kwargs['device'], dtype=factory_kwargs['dtype'])
+            # self.register_buffer("codes",
+            #                     torch.randint(high=256, size=(self.num_codebooks, self.out_features), 
+            #                                 dtype=torch.uint8, device=factory_kwargs['device']))
+        # if not self.shared_codebooks:
+        #     self.codebooks = Parameter(torch.empty(self.num_codebooks, 256, self.codebook_dim, **factory_kwargs))
         
         if bias:
             self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
@@ -126,7 +137,7 @@ class RPQLinear(nn.Module):
 
     def reset_parameters(self) -> None:
         if not self.shared_codebooks:
-            init.kaiming_uniform_(self.codebooks, a=math.sqrt(5))
+            init.kaiming_uniform_(self.rpqweight.codebooks, a=math.sqrt(5))
         if self.bias is not None:
             # manually get fan_in
             fan_in = self.in_features
@@ -138,7 +149,7 @@ class RPQLinear(nn.Module):
         return codebooks.gather(dim=1, index=codes_expand.long())
         
     def get_weight(self) -> Tensor:
-        return rearrange(self.expand(self.codes, self.codebooks), 
+        return rearrange(self.expand(self.rpqweight.codes, self.rpqweight.codebooks), 
                          'h c d -> c (h d)')
 
     def forward(self, input: Tensor) -> Tensor:
@@ -156,25 +167,30 @@ class RPQWeight(nn.Module):
     num_codebooks: int
     codebook_dim: int
     num_vectors: int
+    nbits: int
     codebooks: Tensor
     
-    def __init__(self, num_codebooks: int, codebook_dim: int, num_vectors: int,  shared_codebooks=False, 
-                 split: str = 'column', device=None, dtype=None) -> None:
+    def __init__(self, num_codebooks: int, codebook_dim: int, num_vectors: int, 
+                 nbits: int = 8, shared_codebooks=False, device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.num_codebooks = num_codebooks
         self.codebook_dim = codebook_dim
         self.num_vectors = num_vectors
+        self.nbits = nbits
         self.shared_codebooks = shared_codebooks
-        self.split = split
-        if (self.split != 'row') and (self.split != 'column'):
-            raise ValueError(f"split must be either 'row' or 'column', got {self.split}")
         
+        if self.nbits <= 8:
+            codes_dtype = torch.uint8
+        elif self.nbits <= 15:
+            codes_dtype = torch.int16
+        else:
+            codes_dtype= torch.int32
         self.register_buffer("codes",
-                             torch.randint(high=256, size=(self.num_codebooks, self.num_vectors), 
-                                           dtype=torch.uint8, device=factory_kwargs['device']))
+                             torch.randint(high=2**self.nbits, size=(self.num_codebooks, self.num_vectors), 
+                                           dtype=codes_dtype, device=factory_kwargs['device']))
         if not self.shared_codebooks:
-            self.codebooks = Parameter(torch.empty(self.num_codebooks, 256, 
+            self.codebooks = Parameter(torch.empty(self.num_codebooks, 2**self.nbits, 
                                                 self.codebook_dim, **factory_kwargs))            
         self.reset_parameters()
 
